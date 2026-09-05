@@ -12,7 +12,7 @@ func mwServer(t *testing.T, s *signer, authorize func(*Identity, *http.Request) 
 	// The client gate belongs to Authorize in these tests, so leave the
 	// verifier's own allowlist open: otherwise it refuses first, with a 401,
 	// and the middleware's 403 path is never exercised. Both layers are
-	// legitimate — a service may use either or both.
+	// legitimate: a service may use either or both.
 	v.ClientIDs = nil
 	m := &Middleware{
 		Verifier:  v,

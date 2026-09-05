@@ -23,7 +23,7 @@ type Middleware struct {
 	Verifier *Verifier
 
 	// Authorize decides whether a verified caller may proceed. Nil means
-	// authentication only — any valid token passes, which is rarely what you
+	// authentication only: any valid token passes, which is rarely what you
 	// want beyond a read-only endpoint.
 	Authorize func(*Identity, *http.Request) error
 
@@ -114,7 +114,7 @@ func RequireClient(clients ...string) func(*Identity, *http.Request) error {
 }
 
 // RequireGroup builds an Authorize function requiring an lldap group. This is
-// the human gate — it cannot work for a machine caller, whose token carries
+// the human gate: it cannot work for a machine caller, whose token carries
 // no groups at all.
 func RequireGroup(group string) func(*Identity, *http.Request) error {
 	return func(id *Identity, _ *http.Request) error {
@@ -131,7 +131,7 @@ func writeErr(w http.ResponseWriter, code int, msg string) {
 	_, _ = w.Write([]byte(`{"error":` + quote(msg) + "}\n"))
 }
 
-// quote is a minimal JSON string escaper — enough for error text, without
+// quote is a minimal JSON string escaper: enough for error text, without
 // pulling encoding/json into the hot path of a refusal.
 func quote(s string) string {
 	out := make([]byte, 0, len(s)+2)

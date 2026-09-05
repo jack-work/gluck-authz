@@ -2,8 +2,8 @@
 //
 // WHY EVERY SERVICE MUST DO THIS ITSELF. Backends on spain bind loopback, so
 // Caddy is the only route to them. Caddy strips client Remote-* headers and
-// then either forward-auths a browser session to Authelia, or — when the
-// request carries `Authorization: Bearer` — passes it straight through,
+// then either forward-auths a browser session to Authelia, or: when the
+// request carries `Authorization: Bearer`, passes it straight through,
 // unexamined. On that path nothing upstream has validated anything, so a
 // service that does not verify is unauthenticated to any caller that sends a
 // bearer header.
@@ -62,7 +62,7 @@ type Verifier struct {
 	JWKSURL string
 	// ClientIDs is the allowlist of OIDC clients whose tokens are accepted.
 	//
-	// This — not the audience — is the gate that keeps one service's token
+	// This: not the audience, is the gate that keeps one service's token
 	// from opening another. Authelia issues access tokens with an EMPTY aud
 	// claim (verified against a live token, not assumed), so an aud check
 	// would either reject everything or, written permissively, pass
@@ -198,7 +198,8 @@ func (v *Verifier) VerifyToken(ctx context.Context, token string) (*Identity, er
 	if v.Issuer != "" && c.Iss != v.Issuer {
 		return nil, fmt.Errorf("wrong issuer %q", c.Iss)
 	}
-	// The load-bearing check: a token minted for another CLI must not open
+	// This check is what keeps services apart: a token minted for another CLI
+	// must not open
 	// this one.
 	if len(v.ClientIDs) > 0 {
 		if c.ClientID == "" {
@@ -227,7 +228,7 @@ func (v *Verifier) VerifyToken(ctx context.Context, token string) (*Identity, er
 }
 
 // key returns the public key for a kid, refetching the JWKS at most once per
-// minute when the kid is unknown — so a signing-key rotation recovers
+// minute when the kid is unknown: so a signing-key rotation recovers
 // without a restart, and an unknown kid cannot become a fetch loop.
 func (v *Verifier) key(ctx context.Context, kid string) (*rsa.PublicKey, error) {
 	v.mu.RLock()

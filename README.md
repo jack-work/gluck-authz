@@ -7,7 +7,7 @@ estate.
 
 Backends bind loopback, so Caddy is the only route to them. Caddy strips
 client `Remote-*` headers, then either forward-auths a browser session to
-Authelia, or — when the request carries `Authorization: Bearer` — **passes it
+Authelia, or: when the request carries `Authorization: Bearer`, **passes it
 straight through, unexamined**.
 
 So on the bearer path nothing upstream has validated anything. A service that
@@ -35,7 +35,7 @@ Inside a handler: `authz.FromRequest(r)` → `*Identity` with `Subject`,
   token's own `alg` is what closes the `alg: none` and HMAC-confusion
   families: the token must not choose how it is checked.
 - **Issuer**, **exp/nbf** with 60s skew.
-- **`client_id`**, optionally — *not* audience. Authelia issues access tokens
+- **`client_id`**, optionally, *not* audience. Authelia issues access tokens
   with an empty `aud` (verified against a live token, not assumed), so an
   `aud` check would either reject everything or, written permissively, pass
   everything: a control that looks real and does nothing.
@@ -46,5 +46,5 @@ Inside a handler: `authz.FromRequest(r)` → `*Identity` with `Subject`,
 
 `RequireGroup` works for humans. It **cannot** work for a service: a
 `client_credentials` token has no `preferred_username` and no groups. Use
-`RequireClient` for machine callers — `client_id` is the only thing that
+`RequireClient` for machine callers, `client_id` is the only thing that
 distinguishes one service's token from another's.

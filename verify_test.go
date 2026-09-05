@@ -113,14 +113,14 @@ func TestVerifyAcceptsGoodToken(t *testing.T) {
 	}
 }
 
-// The load-bearing check. Authelia issues an empty aud, so client_id is the
+// The check that keeps services apart. Authelia issues an empty aud, so client_id is the
 // only thing standing between one service's token and another's API.
 func TestVerifyRejectsAnotherClientsToken(t *testing.T) {
 	s := newSigner(t)
 	v := newVerifier(s, t)
 
 	claims := baseClaims()
-	claims["client_id"] = "kfin" // a perfectly valid token — for kfin
+	claims["client_id"] = "kfin" // a perfectly valid token: for kfin
 
 	_, err := v.Verify(context.Background(), "Bearer "+s.token(t, claims))
 	if err == nil {
