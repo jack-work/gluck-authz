@@ -59,16 +59,9 @@ func (i *Identity) HasGroup(name string) bool {
 
 // Verifier checks bearer tokens against a JWKS endpoint.
 type Verifier struct {
-	JWKSURL string
-	// ClientIDs is the allowlist of OIDC clients whose tokens are accepted.
-	//
-	// This: not the audience, is the gate that keeps one service's token
-	// from opening another. Authelia issues access tokens with an EMPTY aud
-	// claim (verified against a live token, not assumed), so an aud check
-	// would either reject everything or, written permissively, pass
-	// everything: a control that looks real and does nothing. The client_id
-	// claim is populated and is what kfin already gates on.
+	JWKSURL   string
 	ClientIDs []string
+	Audiences map[string]string
 	Issuer    string
 
 	HTTP *http.Client
@@ -207,6 +200,11 @@ func (v *Verifier) VerifyToken(ctx context.Context, token string) (*Identity, er
 		}
 		if !contains(v.ClientIDs, c.ClientID) {
 			return nil, fmt.Errorf("token was issued for client %q, not for herald", c.ClientID)
+		}
+	}
+	if want, ok := v.Audiences[c.ClientID]; ok {
+		if len(c.Aud) != 1 || c.Aud[0] != want {
+			return nil, fmt.Errorf("token for client %q must carry aud %q and nothing else, got %q", c.ClientID, want, []string(c.Aud))
 		}
 	}
 

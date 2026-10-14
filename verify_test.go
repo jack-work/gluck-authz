@@ -113,8 +113,8 @@ func TestVerifyAcceptsGoodToken(t *testing.T) {
 	}
 }
 
-// The check that keeps services apart. Authelia issues an empty aud, so client_id is the
-// only thing standing between one service's token and another's API.
+// The check that keeps services apart. Authelia issues an empty aud unless asked, so for
+// most clients client_id is what stands between one service's token and another's API.
 func TestVerifyRejectsAnotherClientsToken(t *testing.T) {
 	s := newSigner(t)
 	v := newVerifier(s, t)
@@ -209,5 +209,47 @@ func TestUnknownKidDoesNotHammerJWKS(t *testing.T) {
 	}
 	if hits > 1 {
 		t.Errorf("JWKS fetched %d times for repeated unknown kids; want at most 1", hits)
+	}
+}
+
+// A client accepted by two services must hold a token minted for one of them.
+func TestAudiencesBindAClientToOneService(t *testing.T) {
+	s := newSigner(t)
+	v := newVerifier(s, t)
+	v.ClientIDs = []string{"herald", "kcal-notify"}
+	v.Audiences = map[string]string{"kcal-notify": "https://herald.test"}
+
+	tok := func(aud any) string {
+		c := baseClaims()
+		c["client_id"] = "kcal-notify"
+		delete(c, "sub")
+		if aud != nil {
+			c["aud"] = aud
+		}
+		return s.token(t, c)
+	}
+	for name, aud := range map[string]any{
+		"missing":        nil,
+		"empty":          []string{},
+		"other service":  []string{"https://cal.test"},
+		"both services":  []string{"https://herald.test", "https://cal.test"},
+		"other string":   "https://cal.test",
+		"trailing slash": []string{"https://herald.test/"},
+	} {
+		if _, err := v.VerifyToken(context.Background(), tok(aud)); err == nil {
+			t.Errorf("%s aud was accepted", name)
+		}
+	}
+	for name, aud := range map[string]any{
+		"list of one": []string{"https://herald.test"},
+		"string":      "https://herald.test",
+	} {
+		if _, err := v.VerifyToken(context.Background(), tok(aud)); err != nil {
+			t.Errorf("%s aud was refused: %v", name, err)
+		}
+	}
+
+	if _, err := v.Verify(context.Background(), "Bearer "+s.token(t, baseClaims())); err != nil {
+		t.Errorf("a client outside Audiences keeps the client_id gate alone: %v", err)
 	}
 }
