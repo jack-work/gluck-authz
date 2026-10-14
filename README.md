@@ -35,10 +35,11 @@ Inside a handler: `authz.FromRequest(r)` → `*Identity` with `Subject`,
   token's own `alg` is what closes the `alg: none` and HMAC-confusion
   families: the token must not choose how it is checked.
 - **Issuer**, **exp/nbf** with 60s skew.
-- **`client_id`**, optionally, *not* audience. Authelia issues access tokens
-  with an empty `aud` (verified against a live token, not assumed), so an
-  `aud` check would either reject everything or, written permissively, pass
-  everything: a control that looks real and does nothing.
+- **`client_id`**, optionally.
+- **`aud`**, when `Audience` is set: exactly one value, equal to it. Empty,
+  absent, another service's, or ours among others is refused. Authelia leaves
+  `aud` empty unless the client registers an `audience`, so set `Audience`
+  only for a client that does, and leave it unset otherwise.
 - An unknown `kid` refetches JWKS at most once a minute, so a bogus token
   cannot be turned into a request amplifier against Authelia.
 
