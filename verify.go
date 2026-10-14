@@ -59,10 +59,11 @@ func (i *Identity) HasGroup(name string) bool {
 
 // Verifier checks bearer tokens against a JWKS endpoint.
 type Verifier struct {
-	JWKSURL string
-	ClientIDs []string
-	Audience  string
-	Issuer    string
+	JWKSURL        string
+	ClientIDs      []string
+	Audience       string
+	AudienceScoped []string
+	Issuer         string
 
 	HTTP *http.Client
 
@@ -203,7 +204,7 @@ func (v *Verifier) VerifyToken(ctx context.Context, token string) (*Identity, er
 		}
 	}
 
-	if v.Audience != "" && (len(c.Aud) != 1 || c.Aud[0] != v.Audience) {
+	if v.mustCarryAudience(c.ClientID) && (v.Audience == "" || len(c.Aud) != 1 || c.Aud[0] != v.Audience) {
 		return nil, fmt.Errorf("token audience %q is not exactly %q", []string(c.Aud), v.Audience)
 	}
 
@@ -227,6 +228,13 @@ func (v *Verifier) VerifyToken(ctx context.Context, token string) (*Identity, er
 // key returns the public key for a kid, refetching the JWKS at most once per
 // minute when the kid is unknown: so a signing-key rotation recovers
 // without a restart, and an unknown kid cannot become a fetch loop.
+func (v *Verifier) mustCarryAudience(clientID string) bool {
+	if len(v.AudienceScoped) == 0 {
+		return v.Audience != ""
+	}
+	return contains(v.AudienceScoped, clientID)
+}
+
 func (v *Verifier) key(ctx context.Context, kid string) (*rsa.PublicKey, error) {
 	v.mu.RLock()
 	k, ok := v.keys[kid]

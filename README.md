@@ -40,6 +40,11 @@ Inside a handler: `authz.FromRequest(r)` → `*Identity` with `Subject`,
   absent, another service's, or ours among others is refused. Authelia leaves
   `aud` empty unless the client registers an `audience`, so set `Audience`
   only for a client that does, and leave it unset otherwise.
+- **`AudienceScoped`** narrows that to the clients named: only their tokens
+  must carry `Audience`, and every other client keeps the `client_id` gate
+  alone. Use it when one client is shared with another service while the
+  rest still receive an empty `aud`. A client named there with `Audience`
+  unset is refused, not waved through.
 - An unknown `kid` refetches JWKS at most once a minute, so a bogus token
   cannot be turned into a request amplifier against Authelia.
 
