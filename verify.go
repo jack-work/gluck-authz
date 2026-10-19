@@ -15,6 +15,9 @@ package authz
 
 import (
 	"context"
+	"crypto"
+	"crypto/ecdsa"
+	"crypto/elliptic"
 	"crypto/rsa"
 	"encoding/base64"
 	"encoding/binary"
@@ -68,7 +71,7 @@ type Verifier struct {
 	HTTP *http.Client
 
 	mu      sync.RWMutex
-	keys    map[string]*rsa.PublicKey
+	keys    map[string]crypto.PublicKey
 	fetched time.Time
 }
 
@@ -153,10 +156,12 @@ func (v *Verifier) VerifyToken(ctx context.Context, token string) (*Identity, er
 	if err := json.Unmarshal(headerBytes, &h); err != nil {
 		return nil, fmt.Errorf("token header: %w", err)
 	}
-	// Only RSA signatures are accepted. Refusing to switch on the token's
-	// own alg is what closes the "alg: none" and HMAC-confusion families:
-	// the token must not get to choose how it is checked.
-	if h.Alg != "RS256" && h.Alg != "RS512" {
+	// Only asymmetric algorithms on an allowlist are accepted, and the KEY
+	// decides which: an RSA key verifies only RS256/RS512, a P-256 key only
+	// ES256. Refusing to let the token's own alg pick the check is what
+	// closes the "alg: none", HMAC-confusion and key-type-confusion
+	// families. Authelia signs RS256; Kanidm signs ES256 by default.
+	if h.Alg != "RS256" && h.Alg != "RS512" && h.Alg != "ES256" {
 		return nil, fmt.Errorf("unsupported signing algorithm %q", h.Alg)
 	}
 
@@ -168,7 +173,7 @@ func (v *Verifier) VerifyToken(ctx context.Context, token string) (*Identity, er
 	if err != nil {
 		return nil, fmt.Errorf("token signature: %w", err)
 	}
-	if err := verifyRSA(h.Alg, key, []byte(parts[0]+"."+parts[1]), sig); err != nil {
+	if err := verifySignature(h.Alg, key, []byte(parts[0]+"."+parts[1]), sig); err != nil {
 		return nil, fmt.Errorf("signature: %w", err)
 	}
 
@@ -235,7 +240,7 @@ func (v *Verifier) mustCarryAudience(clientID string) bool {
 	return contains(v.AudienceScoped, clientID)
 }
 
-func (v *Verifier) key(ctx context.Context, kid string) (*rsa.PublicKey, error) {
+func (v *Verifier) key(ctx context.Context, kid string) (crypto.PublicKey, error) {
 	v.mu.RLock()
 	k, ok := v.keys[kid]
 	fetched := v.fetched
@@ -265,6 +270,9 @@ type jwks struct {
 		Use string `json:"use"`
 		N   string `json:"n"`
 		E   string `json:"e"`
+		Crv string `json:"crv"`
+		X   string `json:"x"`
+		Y   string `json:"y"`
 	} `json:"keys"`
 }
 
@@ -286,27 +294,21 @@ func (v *Verifier) refresh(ctx context.Context) error {
 		return fmt.Errorf("parse jwks: %w", err)
 	}
 
-	keys := map[string]*rsa.PublicKey{}
+	keys := map[string]crypto.PublicKey{}
 	for _, k := range set.Keys {
-		if k.Kty != "RSA" {
+		if k.Use != "" && k.Use != "sig" {
 			continue
 		}
-		nb, err := b64(k.N)
-		if err != nil {
-			continue
+		switch k.Kty {
+		case "RSA":
+			if pub := rsaKey(k.N, k.E); pub != nil {
+				keys[k.Kid] = pub
+			}
+		case "EC":
+			if pub := p256Key(k.Crv, k.X, k.Y); pub != nil {
+				keys[k.Kid] = pub
+			}
 		}
-		eb, err := b64(k.E)
-		if err != nil {
-			continue
-		}
-		e := 0
-		if len(eb) > 8 {
-			continue
-		}
-		padded := make([]byte, 8)
-		copy(padded[8-len(eb):], eb)
-		e = int(binary.BigEndian.Uint64(padded))
-		keys[k.Kid] = &rsa.PublicKey{N: new(big.Int).SetBytes(nb), E: e}
 	}
 
 	v.mu.Lock()
@@ -314,6 +316,41 @@ func (v *Verifier) refresh(ctx context.Context) error {
 	v.fetched = time.Now()
 	v.mu.Unlock()
 	return nil
+}
+
+func rsaKey(n, e string) *rsa.PublicKey {
+	nb, err := b64(n)
+	if err != nil {
+		return nil
+	}
+	eb, err := b64(e)
+	if err != nil || len(eb) > 8 {
+		return nil
+	}
+	padded := make([]byte, 8)
+	copy(padded[8-len(eb):], eb)
+	return &rsa.PublicKey{N: new(big.Int).SetBytes(nb), E: int(binary.BigEndian.Uint64(padded))}
+}
+
+// p256Key accepts only P-256, the curve ES256 names. A point that is not on
+// the curve is dropped rather than trusted.
+func p256Key(crv, x, y string) *ecdsa.PublicKey {
+	if crv != "P-256" {
+		return nil
+	}
+	xb, err := b64(x)
+	if err != nil || len(xb) != 32 {
+		return nil
+	}
+	yb, err := b64(y)
+	if err != nil || len(yb) != 32 {
+		return nil
+	}
+	pub := &ecdsa.PublicKey{Curve: elliptic.P256(), X: new(big.Int).SetBytes(xb), Y: new(big.Int).SetBytes(yb)}
+	if !pub.Curve.IsOnCurve(pub.X, pub.Y) {
+		return nil
+	}
+	return pub
 }
 
 func b64(s string) ([]byte, error) {
